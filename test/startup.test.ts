@@ -49,12 +49,16 @@ describe('app startup', () => {
     expect(dom.window.document.querySelector('#content')).not.toBeNull();
     expect(dom.window.document.querySelectorAll('.tab')).toHaveLength(3);
     expect(dom.window.document.querySelector('#graph-canvas')).not.toBeNull();
+    expect(dom.window.document.querySelector('.graph-empty')?.textContent).toContain('No memories yet');
+    expect(dom.window.document.querySelector('.recall-results')?.textContent).toContain('Ask a question');
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
   });
 
   it('boots with legacy memories that omit newer flags', async () => {
-    const legacyMemory = { id: 'legacy', text: 'Legacy memory', createdAt: '2026-10-01T00:00:00.000Z', category: 'note', importance: 3, entities: { capitalizedPhrases: [], regexEntities: [], facts: {} }, facts: {} };
+    const legacyMemory = { id: 'legacy', text: 'Legacy memory', createdAt: '2026-10-01T00:00:00.000Z', category: 'note', importance: 3, archived: true, entities: { capitalizedPhrases: [], regexEntities: [], facts: {} }, facts: {} };
     const dom = await boot({ schemaVersion: 0, memories: [legacyMemory] });
     expect(dom.window.document.querySelector('.shell')).not.toBeNull();
     expect(dom.window.document.querySelector('.stats-row .stat strong')?.textContent).toBe('1');
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
   });
 });
