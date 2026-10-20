@@ -56,8 +56,10 @@ export function detectSensitiveData(text: string): PrivacyFinding[] {
     for (const match of text.matchAll(pattern)) {
       const value = match[0];
       const start = match.index ?? 0;
+      const end = start + value.length;
       if (!isValidFinding(type, value)) continue;
-      candidates.push({ type, value, start, end: start + value.length, replacement: `[REDACTED:${type}]` });
+      if (type === 'aadhaar' && ((start >= 2 && /\d[ -]/.test(text.slice(start - 2, start))) || /[ -]\d/.test(text.slice(end, end + 2)))) continue;
+      candidates.push({ type, value, start, end, replacement: `[REDACTED:${type}]` });
     }
   }
   candidates.sort((left, right) => left.start - right.start || right.end - left.end);
