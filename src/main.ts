@@ -1,5 +1,70 @@
-const app = document.querySelector<HTMLDivElement>('#app');
+import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type SimulationNodeDatum } from 'd3-force';
+import { findContradictions } from './core/contradictions';
+import { extractEntities } from './core/entities';
+import { buildMemoryGraph, type GraphEdge } from './core/graph';
+import { buildPassport } from './core/passport';
+import type { Memory } from './core/types';
+import './styles.css';
 
-if (app) {
-  app.textContent = 'MemoryPass';
+const STORAGE_KEY = 'memorypass.memories.v1';
+const categories = ['note', 'person', 'place', 'work', 'idea'];
+const colors: Record<string, string> = { note: '#8b7cff', person: '#f59eaa', place: '#4fd1a5', work: '#72a7ff', idea: '#f4c86a' };
+type Tab = 'graph' | 'memories' | 'passport';
+interface VisualNode extends SimulationNodeDatum { id: string; text: string; memory: Memory; }
+
+function makeMemory(id: string, text: string, category: string, importance: Memory['importance']): Memory {
+  const entities = extractEntities(text);
+  return { id, text, createdAt: new Date().toISOString(), category, importance, pinned: importance >= 5, shareable: true, archived: false, entities, facts: entities.facts };
 }
+const sampleMemories: Memory[] = [
+  makeMemory('sample-alex', 'Alex Rivera is helping me plan a calmer weekly review.', 'person', 4),
+  makeMemory('sample-home', 'I live in Portland and work at Northstar Labs.', 'place', 5),
+  makeMemory('sample-project', 'The Northstar Labs project uses a small graph of linked notes.', 'work', 4),
+  makeMemory('sample-running', 'I enjoy running along the river on Saturday mornings.', 'note', 3),
+  makeMemory('sample-reading', 'I want to read more about humane technology and thoughtful design.', 'idea', 3),
+  makeMemory('sample-review', 'Alex and I are preparing a project review for next Friday.', 'work', 4),
+];
+function loadMemories(): Memory[] { try { const value = localStorage.getItem(STORAGE_KEY); return value ? JSON.parse(value) as Memory[] : []; } catch { return []; } }
+function saveMemories(value: Memory[]): void { localStorage.setItem(STORAGE_KEY, JSON.stringify(value)); }
+function escapeHtml(value: string): string { return value.replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[c] ?? c)); }
+function formatDate(value: string): string { return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(value)); }
+
+const app = document.querySelector<HTMLDivElement>('#app');
+if (!app) throw new Error('MemoryPass app root is missing');
+let memories = loadMemories();
+if (memories.length === 0) { memories = sampleMemories.map((item) => ({ ...item, entities: { ...item.entities }, facts: { ...item.facts } })); saveMemories(memories); }
+let activeTab: Tab = 'graph';
+let simulation: ReturnType<typeof forceSimulation<VisualNode>> | undefined;
+let graphCanvas: HTMLCanvasElement | undefined;
+let graphNodes: VisualNode[] = [];
+let graphEdges: GraphEdge[] = [];
+
+app.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">✦</span><div><strong>MemoryPass</strong><small>Personal memory graph</small></div></div><nav class="tabs" aria-label="Main navigation"><button class="tab is-active" data-tab="graph"><span>◈</span>Graph</button><button class="tab" data-tab="memories"><span>▤</span>Memories</button><button class="tab" data-tab="passport"><span>◒</span>Passport</button></nav><div class="sidebar-footer"><div class="status-dot"></div><span>Local-only workspace</span></div></aside><main class="main"><header class="topbar"><div><div class="eyebrow">YOUR MEMORY SPACE</div><h1 id="page-title">Memory graph</h1></div><div class="top-actions"><button class="ghost-button" id="load-sample">＋ Load sample data</button><button class="ghost-button danger" id="reset-data">Reset</button></div></header><section id="content"></section></main></div><div class="tooltip" id="tooltip" role="status"></div>`;
+const content = document.querySelector<HTMLElement>('#content')!;
+const title = document.querySelector<HTMLElement>('#page-title')!;
+const tooltip = document.querySelector<HTMLElement>('#tooltip')!;
+function stat(value: string, label: string): string { return `<div class="stat"><strong>${value}</strong><span>${label}</span></div>`; }
+
+function renderGraphView(): void {
+  const graph = buildMemoryGraph(memories.filter((item) => !item.archived), { similarityThreshold: 0.08, maxDegree: 4 }); graphEdges = graph.edges;
+  content.innerHTML = `<div class="stats-row">${stat(String(memories.length), 'memories')}${stat(String(graph.edges.length), 'connections')}${stat(String(new Set(memories.flatMap((item) => item.entities.capitalizedPhrases)).size), 'entities')}${stat(String(findContradictions(memories).length), 'contradictions')}</div><div class="graph-layout"><section class="panel graph-panel"><div class="panel-heading"><div><h2>Memory constellation</h2><p>Connected by shared language and ideas</p></div><span class="live-pill"><i></i>Live graph</span></div><div class="canvas-wrap"><canvas id="graph-canvas" aria-label="Interactive memory graph"></canvas><div class="empty-graph" hidden>No memories yet — add one below to begin.</div></div><div class="legend">${categories.map((category) => `<span><i style="background:${colors[category]}"></i>${category}</span>`).join('')}</div></section><section class="panel add-panel"><div class="panel-heading"><div><h2>Add a memory</h2><p>It will be extracted and linked automatically.</p></div><span class="spark">✦</span></div><form id="memory-form"><label>What do you want to remember?<textarea id="memory-text" required placeholder="I met Jordan at the design studio..."></textarea></label><div class="form-row"><label>Category<select id="memory-category">${categories.map((category) => `<option value="${category}">${category}</option>`).join('')}</select></label><label>Importance<select id="memory-importance">${[1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${value === 3 ? 'selected' : ''}>${value} / 5</option>`).join('')}</select></label></div><button class="primary-button" type="submit">Add to graph <span>→</span></button></form></section></div>`;
+  graphCanvas = document.querySelector<HTMLCanvasElement>('#graph-canvas')!;
+  if (graph.nodes.length === 0) { document.querySelector<HTMLElement>('.empty-graph')!.hidden = false; return; }
+  startGraph(graph.nodes.map((node) => ({ ...node, memory: memories.find((item) => item.id === node.id)! })));
+  document.querySelector<HTMLFormElement>('#memory-form')!.addEventListener('submit', addMemory);
+}
+function startGraph(nodes: VisualNode[]): void {
+  if (simulation) simulation.stop(); graphNodes = nodes; const canvas = graphCanvas!; const rect = canvas.parentElement!.getBoundingClientRect(); const scale = window.devicePixelRatio || 1;
+  canvas.width = rect.width * scale; canvas.height = rect.height * scale; canvas.style.width = `${rect.width}px`; canvas.style.height = `${rect.height}px`; const context = canvas.getContext('2d')!; context.scale(scale, scale); const width = rect.width; const height = rect.height;
+  simulation = forceSimulation(nodes).force('link', forceLink(graphEdges.map((edge) => ({ ...edge })) as unknown as { source: string | VisualNode; target: string | VisualNode; weight: number }[]).id((node: VisualNode) => node.id).distance(100).strength(0.5)).force('charge', forceManyBody().strength(-170)).force('center', forceCenter(width / 2, height / 2)).force('collide', forceCollide<VisualNode>().radius((node: VisualNode) => 10 + node.memory.importance * 2)).on('tick', () => drawGraph(context, width, height));
+  canvas.onmousemove = (event) => { const bounds = canvas.getBoundingClientRect(); const x = event.clientX - bounds.left; const y = event.clientY - bounds.top; const hit = graphNodes.find((node) => Math.hypot((node.x ?? 0) - x, (node.y ?? 0) - y) < 10 + node.memory.importance * 2); if (hit) { tooltip.innerHTML = `<strong>${escapeHtml(hit.memory.category)}</strong><br>${escapeHtml(hit.text)}`; tooltip.style.left = `${event.clientX + 14}px`; tooltip.style.top = `${event.clientY + 14}px`; tooltip.classList.add('visible'); canvas.style.cursor = 'pointer'; } else { tooltip.classList.remove('visible'); canvas.style.cursor = 'default'; } }; canvas.onmouseleave = () => tooltip.classList.remove('visible');
+}
+function drawGraph(context: CanvasRenderingContext2D, width: number, height: number): void { context.clearRect(0, 0, width, height); context.strokeStyle = 'rgba(139,124,255,.25)'; context.lineWidth = 1; for (const edge of graphEdges) { const source = graphNodes.find((node) => node.id === String(edge.source)); const target = graphNodes.find((node) => node.id === String(edge.target)); if (!source || !target) continue; context.globalAlpha = 0.25 + edge.weight * 0.5; context.beginPath(); context.moveTo(source.x ?? width / 2, source.y ?? height / 2); context.lineTo(target.x ?? width / 2, target.y ?? height / 2); context.stroke(); } context.globalAlpha = 1; for (const node of graphNodes) { const radius = 7 + node.memory.importance * 2; const x = node.x ?? width / 2; const y = node.y ?? height / 2; context.shadowBlur = 18; context.shadowColor = colors[node.memory.category] ?? colors.note; context.fillStyle = colors[node.memory.category] ?? colors.note; context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill(); context.shadowBlur = 0; context.fillStyle = '#f8f7ff'; context.font = '11px system-ui'; context.textAlign = 'center'; context.fillText(node.memory.text.slice(0, 22) + (node.memory.text.length > 22 ? '…' : ''), x, y + radius + 16); } }
+function addMemory(event: SubmitEvent): void { event.preventDefault(); const text = document.querySelector<HTMLTextAreaElement>('#memory-text')!.value.trim(); if (!text) return; const category = document.querySelector<HTMLSelectElement>('#memory-category')!.value; const importance = Number(document.querySelector<HTMLSelectElement>('#memory-importance')!.value) as Memory['importance']; memories = [makeMemory(`memory-${Date.now()}`, text, category, importance), ...memories]; saveMemories(memories); render(); }
+function renderMemoriesView(): void { content.innerHTML = `<div class="panel memories-panel"><div class="panel-heading"><div><h2>Memory library</h2><p>Everything you have captured, kept close and searchable.</p></div><span class="count-badge">${memories.length} total</span></div><div class="memory-list">${memories.length ? memories.map((item) => `<article class="memory-card"><div class="memory-icon" style="color:${colors[item.category] ?? colors.note}">✦</div><div class="memory-body"><div class="memory-meta"><span class="category" style="color:${colors[item.category] ?? colors.note}">${escapeHtml(item.category)}</span><span>${formatDate(item.createdAt)}</span><span>Importance ${item.importance}/5</span></div><p>${escapeHtml(item.text)}</p><div class="entity-row">${item.entities.capitalizedPhrases.slice(0, 4).map((entity) => `<span>${escapeHtml(entity)}</span>`).join('')}</div></div></article>`).join('') : '<div class="empty-state">Your memory library is empty.</div>'}</div></div>`; }
+function renderPassportView(): void { const passport = buildPassport(memories); content.innerHTML = `<div class="passport-grid"><section class="panel passport-card"><div class="panel-heading"><div><h2>Shareable passport</h2><p>A privacy-aware snapshot built from your approved memories.</p></div><span class="shield">✓</span></div><div class="passport-preview">${passport.text ? escapeHtml(passport.text) : 'No shareable memories yet.'}</div><div class="passport-footer"><span>${passport.memories.length} memories included</span><span>${passport.findings.length ? `${passport.findings.length} sensitive items redacted` : 'No sensitive data found'}</span></div></section><section class="panel insight-card"><h2>Memory health</h2><div class="health-row"><span>Shareable memories</span><strong>${memories.filter((item) => item.shareable && !item.archived).length}/${memories.length}</strong></div><div class="health-row"><span>Archived memories</span><strong>${memories.filter((item) => item.archived).length}</strong></div><div class="health-row"><span>Contradictions</span><strong>${findContradictions(memories).length}</strong></div><p class="privacy-note">Your data stays in this browser. Passport text redacts detected identifiers before sharing.</p></section></div>`; }
+function render(): void { title.textContent = activeTab === 'graph' ? 'Memory graph' : activeTab === 'memories' ? 'All memories' : 'Your passport'; document.querySelectorAll<HTMLButtonElement>('.tab').forEach((button) => button.classList.toggle('is-active', button.dataset.tab === activeTab)); if (activeTab === 'graph') renderGraphView(); else if (activeTab === 'memories') renderMemoriesView(); else renderPassportView(); }
+document.querySelectorAll<HTMLButtonElement>('.tab').forEach((button) => button.addEventListener('click', () => { activeTab = button.dataset.tab as Tab; render(); }));
+document.querySelector('#load-sample')!.addEventListener('click', () => { memories = sampleMemories.map((item) => ({ ...item, id: `${item.id}-${Date.now()}`, createdAt: new Date().toISOString() })); saveMemories(memories); render(); });
+document.querySelector('#reset-data')!.addEventListener('click', () => { if (window.confirm('Reset all local memories?')) { memories = []; localStorage.removeItem(STORAGE_KEY); render(); } });
+render();
