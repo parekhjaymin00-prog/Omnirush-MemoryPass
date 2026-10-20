@@ -21,11 +21,11 @@ export interface PrivacyResult {
 }
 
 const patterns: Array<{ type: PrivacyFindingType; pattern: RegExp }> = [
-  { type: 'email', pattern: /\b[a-z0-9][a-z0-9._-]{1,254}@[a-z][a-z0-9.-]{1,62}\b/giu },
+  { type: 'email', pattern: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu },
   { type: 'upi', pattern: /\b[a-z0-9][a-z0-9._-]{1,254}@[a-z][a-z0-9.-]{1,62}\b/giu },
   { type: 'api-key', pattern: /\b(?:sk|pk|rk|ghp|gho|github_pat|xoxb|xoxp|xoxa|xoxr|AKIA)[-_][A-Z0-9][A-Z0-9_-]{10,}\b|\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|bearer)\s*[:=]\s*[^\s,;]+/giu },
   { type: 'pan', pattern: /\b[A-Z]{5}\d{4}[A-Z]\b/giu },
-  { type: 'aadhaar', pattern: /(?<![\d -])(?:\d{4}[ -]\d{4}[ -]\d{4}|\d{12})(?![\d -])/g },
+  { type: 'aadhaar', pattern: /(?<!\d)(?:\d{4}[ -]\d{4}[ -]\d{4}|\d{12})(?!\d|[ -]\d)/g },
   { type: 'credit-card', pattern: /\b(?:\d[ -]?){13,19}\b/g },
   { type: 'phone', pattern: /(?<!\w)(?:\+?91[\s.-]?)?(?:[6-9]\d{4}[\s.-]?\d{5}|[6-9]\d{2}[\s.-]?\d{3}[\s.-]?\d{4}|\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})(?!\w)/g },
 ];
