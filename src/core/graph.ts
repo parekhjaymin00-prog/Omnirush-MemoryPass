@@ -1,12 +1,9 @@
 import { cosineSimilarity, buildTfIdfVectors } from './similarity';
 import { tokenize } from './tokenize';
+import type { Memory } from './types';
 
-export interface Memory {
-  id: string;
-  text: string;
-}
-
-export interface GraphNode extends Memory {}
+export type GraphMemory = Pick<Memory, 'id' | 'text'>;
+export interface GraphNode extends GraphMemory {}
 
 export interface GraphEdge {
   source: string;
@@ -25,10 +22,10 @@ export interface GraphOptions {
 }
 
 export function buildMemoryGraph(
-  memories: readonly Memory[],
+  memories: readonly GraphMemory[],
   { similarityThreshold = 0.2, maxDegree = 3 }: GraphOptions = {},
 ): MemoryGraph {
-  const nodes = memories.map((memory) => ({ ...memory }));
+  const nodes = memories.map((memory) => ({ id: memory.id, text: memory.text }));
   if (nodes.length < 2 || maxDegree <= 0) return { nodes, edges: [] };
 
   const vectors = buildTfIdfVectors(nodes.map((memory) => tokenize(memory.text)));
