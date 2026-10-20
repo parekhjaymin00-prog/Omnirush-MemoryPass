@@ -53,7 +53,12 @@ export function recallMemories(
     .map((memory, index) => {
       const memoryTokens = tokenize(memory.text);
       const sharedKeywords = [...new Set(queryTokens.filter((token) => memoryTokens.includes(token)))];
-      const memoryEntities = memory.entities ?? extractEntities(memory.text);
+      const extractedMemoryEntities = extractEntities(memory.text);
+      const memoryEntities: ExtractedEntities = {
+        capitalizedPhrases: [...new Set([...memory.entities.capitalizedPhrases, ...extractedMemoryEntities.capitalizedPhrases])],
+        regexEntities: [...memory.entities.regexEntities, ...extractedMemoryEntities.regexEntities],
+        facts: { ...extractedMemoryEntities.facts, ...memory.entities.facts, ...memory.facts },
+      };
       const queryEntityValues = entityValues(queryEntities);
       const sharedEntities = [...new Set(queryEntityValues.filter((value) => entityValues(memoryEntities).includes(value)))];
       const similarity = cosineSimilarity(queryVector, vectors[index + 1]);
