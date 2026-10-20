@@ -15,4 +15,9 @@ describe('similarity', () => {
     expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0);
     expect(cosineSimilarity([], [])).toBe(0);
   });
+  it('supports empty documents and duplicate terms deterministically', () => {
+    expect(buildTfIdfVectors([])).toEqual([]);
+    expect(buildTfIdfVectors([[], ['東京', '東京']])).toHaveLength(2);
+    expect(cosineSimilarity([1, 2], [1])).toBeGreaterThan(0);
+  });
 });

@@ -24,4 +24,8 @@ describe('passport', () => {
     expect(result.text.length).toBeLessThanOrEqual(42);
     expect(result.findings).toHaveLength(1);
   });
+  it('returns an empty passport for no shareable memories or zero budget', () => {
+    expect(buildPassport([], { characterBudget: 100 })).toEqual({ text: '', memories: [], findings: [] });
+    expect(selectShareableMemories(memories, { characterBudget: 0 })).toEqual([]);
+  });
 });

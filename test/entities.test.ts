@@ -19,4 +19,8 @@ describe('extractEntities', () => {
       { type: 'phone', value: '555-123-4567' },
     ]);
   });
+  it('returns empty collections for empty and unicode-only text', () => {
+    expect(extractEntities('')).toEqual({ capitalizedPhrases: [], regexEntities: [], facts: {} });
+    expect(extractEntities('東京 café')).toEqual({ capitalizedPhrases: [], regexEntities: [], facts: {} });
+  });
 });

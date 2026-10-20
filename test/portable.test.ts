@@ -23,4 +23,9 @@ describe('portable memory exports', () => {
     parsed.memories[0].text = 'tampered';
     expect(importMemories(JSON.stringify(parsed))).toEqual({ ok: false, error: 'Checksum mismatch' });
   });
+  it('handles empty exports and rejects corrupt memory arrays', () => {
+    const result = importMemories(exportMemories([]));
+    expect(result.ok).toBe(true);
+    expect(importMemories(JSON.stringify({ schemaVersion: 1, generatedAt: '2026-10-20T00:00:00.000Z', memories: [{}], checksum: '00000000' }))).toEqual({ ok: false, error: 'Missing or invalid memories' });
+  });
 });

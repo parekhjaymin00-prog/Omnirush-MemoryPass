@@ -10,4 +10,8 @@ describe('tokenize', () => {
     expect(tokenize('')).toEqual([]);
     expect(tokenize(' Café 東京 cats ')).toEqual(['café', '東京', 'cat']);
   });
+  it('handles punctuation-only and very long input without throwing', () => {
+    expect(tokenize('!!! …')).toEqual([]);
+    expect(tokenize('memory '.repeat(2000))).toHaveLength(2000);
+  });
 });

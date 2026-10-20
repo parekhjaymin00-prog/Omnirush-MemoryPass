@@ -21,4 +21,7 @@ describe('timeline filters', () => {
     expect(filterMemoriesByCutoff([], '2026-10-15T00:00:00.000Z')).toEqual([]);
     expect(filterMemoriesByCutoff(memories, 'not-a-date')).toEqual([]);
   });
+  it('excludes memories with invalid dates', () => {
+    expect(filterMemoriesByCutoff([makeMemory('bad', 'not-a-date')], '2026-10-15T00:00:00.000Z')).toEqual([]);
+  });
 });

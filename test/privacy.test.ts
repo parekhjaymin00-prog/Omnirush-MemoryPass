@@ -14,4 +14,8 @@ describe('redactSensitiveData', () => {
     expect(result.redactedText).toContain('4111 1111 1111 1112');
     expect(result.redactedText).toContain('[REDACTED:api-key]');
   });
+  it('leaves empty and unicode text unchanged', () => {
+    expect(redactSensitiveData('').redactedText).toBe('');
+    expect(redactSensitiveData('東京 café').findings).toEqual([]);
+  });
 });

@@ -30,4 +30,10 @@ describe('buildMemoryGraph', () => {
     }
     expect(Math.max(...degrees.values())).toBeLessThanOrEqual(1);
   });
+  it('handles empty input and long duplicate text', () => {
+    expect(buildMemoryGraph([])).toEqual({ nodes: [], edges: [] });
+    const graph = buildMemoryGraph([{ id: 'a', text: '東京 '.repeat(1000) }, { id: 'b', text: '東京 ' .repeat(1000) }], { similarityThreshold: 0.9 });
+    expect(graph.nodes).toHaveLength(2);
+    expect(graph.edges).toHaveLength(1);
+  });
 });
