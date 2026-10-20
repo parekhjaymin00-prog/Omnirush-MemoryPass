@@ -6,6 +6,7 @@ export interface PassportMemory {
   importance?: number;
   pinned?: boolean;
   archived?: boolean;
+  shareable?: boolean;
   createdAt?: string | number | Date;
   updatedAt?: string | number | Date;
 }
@@ -46,7 +47,7 @@ export function selectShareableMemories(
   if (characterBudget <= 0) return [];
   const selected: PassportMemory[] = [];
   let used = 0;
-  for (const memory of memories.filter((candidate) => !candidate.archived).slice().sort(compareMemories)) {
+  for (const memory of memories.filter((candidate) => candidate.shareable === true && !candidate.archived).slice().sort(compareMemories)) {
     const redacted = redactSensitiveData(memory.text).redactedText;
     const cost = redacted.length + (selected.length > 0 ? separator.length : 0);
     if (used + cost > characterBudget) continue;
