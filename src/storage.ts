@@ -36,14 +36,41 @@ function isMemory(value: unknown): value is Memory {
     && isRecord(facts) && Object.values(facts).every((entry) => typeof entry === 'string');
 }
 
+function migrateMemory(value: unknown): Memory | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.text !== 'string' || typeof value.createdAt !== 'string'
+    || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.category !== 'string'
+    || typeof value.importance !== 'number' || !Number.isInteger(value.importance)
+    || value.importance < 1 || value.importance > 5) return null;
+  const entities = isRecord(value.entities) ? value.entities : {};
+  const capitalizedPhrases = Array.isArray(entities.capitalizedPhrases) ? entities.capitalizedPhrases.filter((entry): entry is string => typeof entry === 'string') : [];
+  const regexEntities = (Array.isArray(entities.regexEntities) ? entities.regexEntities.filter((entry): entry is { type: string; value: string } => isRecord(entry) && typeof entry.type === 'string' && typeof entry.value === 'string') : []) as Memory['entities']['regexEntities'];
+  const entityFacts = isRecord(entities.facts) ? Object.fromEntries(Object.entries(entities.facts).filter(([, entry]) => typeof entry === 'string')) : {};
+  const facts = isRecord(value.facts) ? Object.fromEntries(Object.entries(value.facts).filter(([, entry]) => typeof entry === 'string')) : entityFacts;
+  return {
+    id: value.id,
+    text: value.text,
+    createdAt: value.createdAt,
+    category: value.category,
+    importance: value.importance as Memory['importance'],
+    pinned: typeof value.pinned === 'boolean' ? value.pinned : value.importance >= 5,
+    shareable: typeof value.shareable === 'boolean' ? value.shareable : true,
+    archived: typeof value.archived === 'boolean' ? value.archived : false,
+    entities: { capitalizedPhrases, regexEntities, facts: entityFacts },
+    facts,
+  };
+}
+
 export function loadMemories(storage: StorageLike): Memory[] {
   try {
     const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed) || parsed.schemaVersion !== STORAGE_SCHEMA_VERSION || !Array.isArray(parsed.memories)) return [];
-    if (!parsed.memories.every(isMemory)) return [];
-    return parsed.memories.map((memory) => ({ ...memory, entities: { ...memory.entities, facts: { ...memory.entities.facts } }, facts: { ...memory.facts } }));
+    if (!isRecord(parsed) || !Array.isArray(parsed.memories) || typeof parsed.schemaVersion !== 'number' || parsed.schemaVersion > STORAGE_SCHEMA_VERSION) return [];
+    const migrated = parsed.memories.map(migrateMemory);
+    if (migrated.some((memory) => memory === null)) return [];
+    const memories = migrated as Memory[];
+    if (parsed.schemaVersion !== STORAGE_SCHEMA_VERSION || !memories.every(isMemory)) return memories;
+    return memories.map((memory) => ({ ...memory, entities: { ...memory.entities, facts: { ...memory.entities.facts } }, facts: { ...memory.facts } }));
   } catch {
     return [];
   }
